@@ -1,0 +1,37 @@
+# Environment variables
+.env
+
+# Virtual environments
+venv/
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Downloads
+downloads/
+
+# Logs
+logs/
+*.log
+
+# State
+data/state.json
+
+# Playwright
+playwright-report/
+test-results/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local debugging
+debug_pdf_page.html

@@ -74,7 +74,14 @@ def main():
         "Starting newspaper download..."
     )
 
-    pdf_path = download_hindu_pdf()
+    try:
+        pdf_path = download_hindu_pdf()
+    except Exception as e:
+        print(
+            f"Download skipped: {e}"
+        )
+
+        return
 
     print(
         f"Downloaded: {pdf_path}"

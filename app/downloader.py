@@ -1,6 +1,8 @@
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from urllib.parse import urljoin
+import re
 
 import requests
 from playwright.sync_api import sync_playwright
@@ -172,6 +174,59 @@ def download_hindu_pdf():
 
         print("Actual PDF URL:")
         print(pdf_url)
+
+        #
+        # VERIFY PAPER DATE
+        #
+
+        pdf_filename = pdf_url.split("/")[-1]
+
+        print(
+            f"PDF filename: {pdf_filename}"
+        )
+
+        match = re.search(
+            r"(\d{2})~(\d{2})~(\d{4})",
+            pdf_filename
+        )
+
+        if not match:
+
+            raise Exception(
+                "Could not determine date from PDF filename."
+            )
+
+        day, month, year = match.groups()
+
+        paper_date = datetime(
+            int(year),
+            int(month),
+            int(day)
+        ).date()
+
+        today_ist = datetime.now(
+            ZoneInfo("Asia/Kolkata")
+        ).date()
+
+        print(
+            f"Paper date: {paper_date}"
+        )
+
+        print(
+            f"Today's date: {today_ist}"
+        )
+
+        if paper_date != today_ist:
+
+            raise Exception(
+                f"Paper date mismatch. "
+                f"Expected {today_ist}, "
+                f"got {paper_date}"
+            )
+
+        print(
+            "Paper date verified."
+        )
 
         #
         # DOWNLOAD PDF

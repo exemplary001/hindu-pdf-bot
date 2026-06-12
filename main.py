@@ -28,13 +28,9 @@ def main():
     # Only run between
     # 10:00 AM and 2:59 PM IST
     #
-    if current_hour < 10 or current_hour > 14:
-
-        print(
-            "Outside newspaper window."
-        )
-
-        return
+    print(
+        "Skipping time window check for testing."
+    )
 
     today = str(
         india_now.date()

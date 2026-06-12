@@ -33,3 +33,7 @@ TELEGRAM_CHAT_IDS = os.getenv(
     "TELEGRAM_CHAT_IDS",
     ""
 )
+
+DATABASE_URL = os.getenv(
+    "DATABASE_URL"
+)

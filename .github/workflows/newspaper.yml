@@ -1,8 +1,8 @@
-name: Hindu Newspaper Bot
+name: Hindu Newspaper Bot Scheduler
 
 on:
   schedule:
-    - cron: "*/15 4-9 * * *"
+    - cron: "*/15 * * * *"
 
   workflow_dispatch:
 

@@ -43,19 +43,71 @@ def download_hindu_pdf():
 
         #
         # STEP 1
-        # THE HINDU READ
+        # FIND THE HINDU CARD
         #
+
+        print(
+            "Looking for The Hindu..."
+        )
+
+        page1.wait_for_timeout(
+            10000
+        )
+
+        titles = page1.locator(
+            "div.card-d-s-title"
+        )
+
+        card_count = titles.count()
+
+        print(
+            f"Found {card_count} newspaper cards."
+            )
+
+        target_index = None
+
+        for i in range(card_count):
+
+            text = titles.nth(i).inner_text().strip()
+
+            print(
+                f"{i}: {text}"
+            )
+
+            if text == "The Hindu":
+
+                target_index = i
+
+                break
+
+        if target_index is None:
+
+            raise Exception(
+            "The Hindu card not found."
+            )
+
+        print(
+            f"Found The Hindu at index {target_index}"
+        )
+
+        read_buttons = page1.locator(
+            "a.btn-read"
+        )
 
         with context.expect_page() as page2_info:
 
-            page1.locator(
-                "xpath=/html/body/div[2]/div[4]/div[5]/div[2]/a"
+            read_buttons.nth(
+                target_index
             ).click()
 
         page2 = page2_info.value
+
         page2.wait_for_load_state()
 
-        print("Page2:", page2.url)
+        print(
+            "Page2:",
+            page2.url
+        )
 
         #
         # STEP 2

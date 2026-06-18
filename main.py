@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.downloader import download_hindu_pdf
@@ -11,30 +11,9 @@ from app.state import (
 
 def main():
 
-    #
-    # India timezone
-    #
     india_now = datetime.now(
         ZoneInfo("Asia/Kolkata")
     )
-
-    current_hour = india_now.hour
-
-    print(
-        f"Current IST time: {india_now}"
-    )
-
-    #
-    # Only run between
-    # 10:00 AM and 2:59 PM IST
-    #
-    if current_hour < 10 or current_hour > 14:
-
-        print(
-            "Outside newspaper window."
-        )
-
-        return
 
     today = str(
         india_now.date()
@@ -47,6 +26,7 @@ def main():
     #
     # Check Neon state
     #
+
     last_successful_date = (
         get_last_successful_date()
     )
@@ -59,6 +39,7 @@ def main():
     #
     # Already sent today?
     #
+
     if last_successful_date == today:
 
         print(
@@ -70,13 +51,17 @@ def main():
     #
     # Download newspaper
     #
+
     print(
         "Starting newspaper download..."
     )
 
     try:
+
         pdf_path = download_hindu_pdf()
+
     except Exception as e:
+
         print(
             f"Download skipped: {e}"
         )
@@ -90,6 +75,7 @@ def main():
     #
     # Send Telegram
     #
+
     print(
         "Sending Telegram message..."
     )
@@ -100,6 +86,7 @@ def main():
     # Save date ONLY after
     # successful Telegram delivery
     #
+
     save_successful_date(
         today
     )

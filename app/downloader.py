@@ -242,13 +242,61 @@ def download_hindu_pdf():
             pdf_filename
         )
 
+        #
+        # Extract date from filename
+        #
+        # Supports:
+        # 18~06~2026
+        # 18_06_2026
+        # 18-06-2026
+        # 18.06.2026
+        # 2026_06_18
+        #
+
+        date_patterns = [
+
+            r"(\d{2})[~_.-](\d{2})[~_.-](\d{4})",
+
+            r"(\d{4})[~_.-](\d{2})[~_.-](\d{2})",
+
+        ]
+
+        match = None
+
+        for pattern in date_patterns:
+
+            match = re.search(
+                pattern,
+                pdf_filename
+            )
+
+            if match:
+
+                break
+
         if not match:
 
             raise Exception(
-                "Could not determine date from PDF filename."
+                f"Could not determine date from PDF filename: {pdf_filename}"
             )
 
-        day, month, year = match.groups()
+        groups = match.groups()
+
+        #
+        # YYYY-MM-DD
+        #
+
+        if len(groups[0]) == 4:
+
+            year, month, day = groups
+
+        #
+        # DD-MM-YYYY
+        #
+
+        else:
+
+            day, month, year = groups
 
         paper_date = datetime(
             int(year),

@@ -2,15 +2,130 @@ from pathlib import Path
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from urllib.parse import urljoin
+from urllib.parse import unquote
 import re
 
 import requests
 from playwright.sync_api import sync_playwright
 
+import fitz
+import tempfile
+
 
 DOWNLOAD_DIR = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
+def extract_date_from_pdf(pdf_bytes):
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".pdf",
+        delete=True
+    ) as temp_pdf:
+
+        temp_pdf.write(pdf_bytes)
+        temp_pdf.flush()
+
+        doc = fitz.open(
+            temp_pdf.name
+        )
+
+        text = ""
+
+        #
+        # First page is enough
+        #
+
+        if len(doc) > 0:
+
+            text = ""
+
+            for page_num in range(
+                min(3, len(doc))
+            ):
+                text += (
+                    doc[page_num]
+                    .get_text()
+                    + "\n"
+                )
+
+        doc.close()
+
+    text_upper = text.upper()
+
+    #
+    # JUNE 18, 2026
+    #
+
+    match = re.search(
+        r"(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\s+(\d{1,2}),?\s+(\d{4})",
+        text_upper
+    )
+
+    if match:
+
+        month_name, day, year = match.groups()
+
+        month_map = {
+
+            "JANUARY": 1,
+            "FEBRUARY": 2,
+            "MARCH": 3,
+            "APRIL": 4,
+            "MAY": 5,
+            "JUNE": 6,
+            "JULY": 7,
+            "AUGUST": 8,
+            "SEPTEMBER": 9,
+            "OCTOBER": 10,
+            "NOVEMBER": 11,
+            "DECEMBER": 12
+
+        }
+
+        return datetime(
+            int(year),
+            month_map[month_name],
+            int(day)
+        ).date()
+
+    #
+    # 19 JUNE 2026
+    # 19 JUNE, 2026
+    #
+
+    match = re.search(
+        r"(\d{1,2})\s+(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER),?\s+(\d{4})",
+        text_upper
+    )
+
+    if match:
+
+        day, month_name, year = match.groups()
+
+        month_map = {
+
+            "JANUARY": 1,
+            "FEBRUARY": 2,
+            "MARCH": 3,
+            "APRIL": 4,
+            "MAY": 5,
+            "JUNE": 6,
+            "JULY": 7,
+            "AUGUST": 8,
+            "SEPTEMBER": 9,
+            "OCTOBER": 10,
+            "NOVEMBER": 11,
+            "DECEMBER": 12
+
+        }
+
+        return datetime(
+            int(year),
+            month_map[month_name],
+            int(day)
+        ).date()
+
+    return None
 
 def download_hindu_pdf():
 
@@ -62,7 +177,7 @@ def download_hindu_pdf():
 
         print(
             f"Found {card_count} newspaper cards."
-            )
+        )
 
         target_index = None
 
@@ -74,7 +189,7 @@ def download_hindu_pdf():
                 f"{i}: {text}"
             )
 
-            if text == "The Hindu":
+            if text.strip().lower() == "the hindu":
 
                 target_index = i
 
@@ -83,7 +198,7 @@ def download_hindu_pdf():
         if target_index is None:
 
             raise Exception(
-            "The Hindu card not found."
+                "The Hindu card not found."
             )
 
         print(
@@ -231,15 +346,12 @@ def download_hindu_pdf():
         # VERIFY PAPER DATE
         #
 
-        pdf_filename = pdf_url.split("/")[-1]
+        pdf_filename = unquote(
+            pdf_url.split("/")[-1]
+        )
 
         print(
             f"PDF filename: {pdf_filename}"
-        )
-
-        match = re.search(
-            r"(\d{2})~(\d{2})~(\d{4})",
-            pdf_filename
         )
 
         #
@@ -274,35 +386,62 @@ def download_hindu_pdf():
 
                 break
 
-        if not match:
-
-            raise Exception(
-                f"Could not determine date from PDF filename: {pdf_filename}"
-            )
-
-        groups = match.groups()
+        pdf_content = None
 
         #
-        # YYYY-MM-DD
+        # DATE FOUND IN FILENAME
         #
 
-        if len(groups[0]) == 4:
+        if match:
 
-            year, month, day = groups
+            groups = match.groups()
 
+            if len(groups[0]) == 4:
+
+                year, month, day = groups
+            
+            else:
+
+                day, month, year = groups
+            
+            paper_date = datetime(
+                int(year),
+                int(month),
+                int(day)
+            ).date()
+        
         #
-        # DD-MM-YYYY
+        # FALLBACK TO PDF TEXT
         #
 
         else:
 
-            day, month, year = groups
+            print(
+                "No date found in filename."
+            )
 
-        paper_date = datetime(
-            int(year),
-            int(month),
-            int(day)
-        ).date()
+            print(
+                "Falling back to PDF text extraction..."
+            )
+
+            response = requests.get(
+                pdf_url,
+                timeout=120
+            )
+
+            response.raise_for_status()
+
+            pdf_content = response.content
+
+            paper_date = extract_date_from_pdf(
+                pdf_content
+            )
+
+            if not paper_date:
+
+                raise Exception(
+                    f"Could not determine date from filename or PDF: {pdf_filename}"
+                )
 
         today_ist = datetime.now(
             ZoneInfo("Asia/Kolkata")
@@ -329,19 +468,23 @@ def download_hindu_pdf():
         )
 
         #
-        # DOWNLOAD PDF
+        # DOWNLOAD PDF only if not already downloaded
         #
 
-        response = requests.get(
-            pdf_url,
-            timeout=120
-        )
+        if pdf_content is None:
 
-        response.raise_for_status()
+            response = requests.get(
+                pdf_url,
+                timeout=120
+            )
 
+            response.raise_for_status()
+
+            pdf_content = response.content
+        
         with open(filepath, "wb") as f:
 
-            f.write(response.content)
+            f.write(pdf_content)
 
         print(
             f"Saved PDF: {filepath}"

@@ -47,7 +47,7 @@ def main():
             if str(last_dt.date()) == today:
 
                 print(
-                    f"Today's newspaper already sent at"
+                    f"Today's newspaper already sent at "
                     f"{last_dt.strftime('%I:%M:%S %p IST')}"
                 )
 

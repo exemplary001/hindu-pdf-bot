@@ -27,26 +27,47 @@ def main():
     # Check Neon state
     #
 
-    last_successful_date = (
+    last_successful = (
         get_last_successful_date()
     )
 
     print(
-        "Last successful date:",
-        last_successful_date
+        "Last successful timestamp:",
+        last_successful
     )
 
-    #
-    # Already sent today?
-    #
+    if last_successful :
 
-    if last_successful_date == today:
+        try:
 
-        print(
-            "Today's newspaper already sent."
-        )
+            last_dt = datetime.fromisoformat(
+                last_successful
+            )
 
-        return
+            if str(last_dt.date()) == today:
+
+                print(
+                    f"Today's newspaper already sent at "
+                    f"{last_dt.strftime('%I:%M:%S %p IST')}"
+                )
+
+                return
+                
+        
+        except ValueError:
+        
+            #
+            # Legacy date-only time format
+            #
+
+            if last_successful == today:
+
+                print(
+                    "Today's newspaper already sent."
+                )
+
+                return
+    
 
     #
     # Download newspaper
@@ -88,7 +109,7 @@ def main():
     #
 
     save_successful_date(
-        today
+        india_now.isoformat()
     )
 
     print(

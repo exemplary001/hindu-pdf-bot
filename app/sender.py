@@ -8,6 +8,10 @@ from app.config import (
 )
 
 
+class TelegramTooLargeError(Exception):
+    pass
+
+
 def send_pdf(pdf_path: Path):
 
     url = (
@@ -47,8 +51,6 @@ def send_pdf(pdf_path: Path):
                 timeout=300
             )
 
-        print(response.text)
-
         print(
             f"Response status code: {response.status_code}"
         )
@@ -56,7 +58,13 @@ def send_pdf(pdf_path: Path):
         print(
             response.text
         )
-        
+
+        if response.status_code == 413:
+
+            raise TelegramTooLargeError(
+                "Telegram upload limit exceeded."
+            )
+
         response.raise_for_status()
 
         print(

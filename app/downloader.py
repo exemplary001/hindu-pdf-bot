@@ -127,11 +127,17 @@ def extract_date_from_pdf(pdf_bytes):
 
     return None
 
-def download_hindu_pdf():
+def download_hindu_pdf(newspaper_name="The Hindu"):
 
     today = date.today().isoformat()
 
-    filename = f"hindu_{today}.pdf"
+    safe_name = (
+        newspaper_name
+        .lower()
+        .replace(" ", "_")
+    )
+
+    filename = f"{safe_name}_{today}.pdf"
     filepath = DOWNLOAD_DIR / filename
 
     with sync_playwright() as p:
@@ -192,7 +198,7 @@ def download_hindu_pdf():
         #
 
         print(
-            "Looking for The Hindu..."
+            f"Looking for {newspaper_name}..."
         )
 
         titles = page1.locator(
@@ -215,7 +221,7 @@ def download_hindu_pdf():
                 f"{i}: {text}"
             )
 
-            if text.strip().lower() == "the hindu":
+            if text.strip().lower() == newspaper_name.lower():
 
                 target_index = i
 
@@ -224,11 +230,11 @@ def download_hindu_pdf():
         if target_index is None:
 
             raise Exception(
-                "The Hindu card not found."
+                f"{newspaper_name} card not found."
             )
 
         print(
-            f"Found The Hindu at index {target_index}"
+            f"Found {newspaper_name} at index {target_index}"
         )
 
         read_buttons = page1.locator(

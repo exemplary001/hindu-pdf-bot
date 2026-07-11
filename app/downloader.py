@@ -140,7 +140,13 @@ def download_hindu_pdf():
             headless=True
         )
 
-        context = browser.new_context()
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/137.0.0.0 Safari/537.36"
+            )
+        )
 
         #
         # PAGE 1
@@ -150,11 +156,35 @@ def download_hindu_pdf():
 
         print("Opening Indiags...")
 
-        page1.goto(
-            "https://www.indiags.com/epaper-pdf-download",
-            wait_until="networkidle",
-            timeout=60000
-        )
+        for attempt in range(3):
+            try:
+
+                page1.goto(
+                    "https://www.indiags.com/epaper-pdf-download",
+                    wait_until="domcontentloaded",
+                    timeout=60000
+                )
+
+                page1.locator(
+                    "div.card-d-s-title"
+                ).first.wait_for(
+                    state="visible",
+                    timeout=30000
+                )
+
+                break
+
+            except Exception as e:
+
+                print(
+                    f"Page load failed (attempt {attempt + 1}/3): {e}"
+                )
+
+                if attempt == 2:
+
+                    raise
+
+                page1.wait_for_timeout(5000)
 
         #
         # STEP 1
@@ -163,10 +193,6 @@ def download_hindu_pdf():
 
         print(
             "Looking for The Hindu..."
-        )
-
-        page1.wait_for_timeout(
-            10000
         )
 
         titles = page1.locator(
@@ -303,7 +329,7 @@ def download_hindu_pdf():
 
         pdf_page.goto(
             pdf_page_url,
-            wait_until="networkidle",
+            wait_until="load",
             timeout=60000
         )
 

@@ -516,6 +516,12 @@ def download_hindu_pdf():
             f"Saved PDF: {filepath}"
         )
 
+        size_mb = filepath.stat().st_size / (1024 * 1024)
+
+        print(
+            f"PDF size: {size_mb:.2f} MB"
+        )
+
         browser.close()
 
         return filepath

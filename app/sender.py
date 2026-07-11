@@ -49,6 +49,14 @@ def send_pdf(pdf_path: Path):
 
         print(response.text)
 
+        print(
+            f"Response status code: {response.status_code}"
+        )
+
+        print(
+            response.text
+        )
+        
         response.raise_for_status()
 
         print(

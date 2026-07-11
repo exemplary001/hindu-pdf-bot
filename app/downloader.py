@@ -522,6 +522,44 @@ def download_hindu_pdf():
             f"PDF size: {size_mb:.2f} MB"
         )
 
+        if size_mb > 40:
+
+            print("PDF size exceeds 40 MB. Compressing...")
+
+            filepath = compress_pdf(filepath)
+        
+        else:
+
+            print("PDF size is within limits. No compression needed.")
+
         browser.close()
 
         return filepath
+
+def compress_pdf(input_path: Path) -> Path:
+
+    output_path = input_path.with_name(
+        input_path.stem + "_compressed.pdf"
+    )
+
+    doc = fitz.open(input_path)
+
+    doc.save(
+        output_path,
+        garbage=4,
+        deflate=True,
+        clean=True
+    )
+
+    doc.close()
+
+    original = input_path.stat().st_size / (1024 * 1024)
+    compressed = output_path.stat().st_size / (1024 * 1024)
+    saved = original - compressed
+    percent_saved = (saved / original) * 100 if original > 0 else 0
+
+    print(f"Original PDF: {original:.2f} MB")
+    print(f"Compressed PDF: {compressed:.2f} MB")
+    print(f"Space saved: {saved:.2f} MB ({percent_saved:.2f}%)")
+
+    return output_path

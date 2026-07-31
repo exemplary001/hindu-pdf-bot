@@ -172,7 +172,7 @@ def download_hindu_pdf(newspaper_name="The Hindu"):
                 )
 
                 page1.locator(
-                    "div.card-d-s-title"
+                    "div.ep-card"
                 ).first.wait_for(
                     state="visible",
                     timeout=30000
@@ -201,51 +201,45 @@ def download_hindu_pdf(newspaper_name="The Hindu"):
             f"Looking for {newspaper_name}..."
         )
 
-        titles = page1.locator(
-            "div.card-d-s-title"
-        )
+        cards = page1.locator("div.ep-card")
 
-        card_count = titles.count()
+        card_count = cards.count()
 
-        print(
-            f"Found {card_count} newspaper cards."
-        )
+        print(f"Found {card_count} newspaper cards.")
 
-        target_index = None
+        target_card = None
 
         for i in range(card_count):
 
-            text = titles.nth(i).inner_text().strip()
+            card = cards.nth(i)
 
-            print(
-                f"{i}: {text}"
+            title = " ".join(
+                card.locator("p.ttl").inner_text().split()
             )
 
-            if text.strip().lower() == newspaper_name.lower():
+            print(f"{i}: {title}")
 
-                target_index = i
+            if title.casefold() == newspaper_name.casefold():
+
+                target_card = card
+
+                print(
+                    f"Found {newspaper_name} at index {i}"
+                )
 
                 break
-
-        if target_index is None:
+        if target_card is None:
 
             raise Exception(
-                f"{newspaper_name} card not found."
+                f"{newspaper_name} not found on the page."
             )
-
-        print(
-            f"Found {newspaper_name} at index {target_index}"
-        )
-
-        read_buttons = page1.locator(
-            "a.btn-read"
-        )
 
         with context.expect_page() as page2_info:
 
-            read_buttons.nth(
-                target_index
+            target_card.locator(
+                "a.ep-read"
             ).click()
+            
 
         page2 = page2_info.value
 

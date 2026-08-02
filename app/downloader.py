@@ -1,556 +1,287 @@
-from pathlib import Path
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
-from urllib.parse import urljoin
-from urllib.parse import unquote
 import re
-
 import requests
-from playwright.sync_api import sync_playwright
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import fitz
-import tempfile
-
+from playwright.sync_api import sync_playwright
 
 DOWNLOAD_DIR = Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 
+
 def extract_date_from_pdf(pdf_bytes):
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    text = ""
 
-    with tempfile.NamedTemporaryFile(
-        suffix=".pdf",
-        delete=True
-    ) as temp_pdf:
+    # First 3 pages are checked
+    if len(doc) > 0:
+        for page_num in range(min(3, len(doc))):
+            text += doc[page_num].get_text() + "\n"
 
-        temp_pdf.write(pdf_bytes)
-        temp_pdf.flush()
-
-        doc = fitz.open(
-            temp_pdf.name
-        )
-
-        text = ""
-
-        #
-        # First page is enough
-        #
-
-        if len(doc) > 0:
-
-            text = ""
-
-            for page_num in range(
-                min(3, len(doc))
-            ):
-                text += (
-                    doc[page_num]
-                    .get_text()
-                    + "\n"
-                )
-
-        doc.close()
+    doc.close()
 
     text_upper = text.upper()
 
-    #
-    # JUNE 18, 2026
-    #
-
+    # Format: JUNE 18, 2026
     match = re.search(
         r"(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)\s+(\d{1,2}),?\s+(\d{4})",
-        text_upper
+        text_upper,
     )
 
+    month_map = {
+        "JANUARY": 1,
+        "FEBRUARY": 2,
+        "MARCH": 3,
+        "APRIL": 4,
+        "MAY": 5,
+        "JUNE": 6,
+        "JULY": 7,
+        "AUGUST": 8,
+        "SEPTEMBER": 9,
+        "OCTOBER": 10,
+        "NOVEMBER": 11,
+        "DECEMBER": 12,
+    }
+
     if match:
-
         month_name, day, year = match.groups()
+        return datetime(int(year), month_map[month_name], int(day)).date()
 
-        month_map = {
-
-            "JANUARY": 1,
-            "FEBRUARY": 2,
-            "MARCH": 3,
-            "APRIL": 4,
-            "MAY": 5,
-            "JUNE": 6,
-            "JULY": 7,
-            "AUGUST": 8,
-            "SEPTEMBER": 9,
-            "OCTOBER": 10,
-            "NOVEMBER": 11,
-            "DECEMBER": 12
-
-        }
-
-        return datetime(
-            int(year),
-            month_map[month_name],
-            int(day)
-        ).date()
-
-    #
-    # 19 JUNE 2026
-    # 19 JUNE, 2026
-    #
-
+    # Format: 19 JUNE 2026 / 19 JUNE, 2026
     match = re.search(
         r"(\d{1,2})\s+(JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER),?\s+(\d{4})",
-        text_upper
+        text_upper,
     )
 
     if match:
-
         day, month_name, year = match.groups()
-
-        month_map = {
-
-            "JANUARY": 1,
-            "FEBRUARY": 2,
-            "MARCH": 3,
-            "APRIL": 4,
-            "MAY": 5,
-            "JUNE": 6,
-            "JULY": 7,
-            "AUGUST": 8,
-            "SEPTEMBER": 9,
-            "OCTOBER": 10,
-            "NOVEMBER": 11,
-            "DECEMBER": 12
-
-        }
-
-        return datetime(
-            int(year),
-            month_map[month_name],
-            int(day)
-        ).date()
+        return datetime(int(year), month_map[month_name], int(day)).date()
 
     return None
 
+
 def download_hindu_pdf(newspaper_name="The Hindu"):
-
-    today = date.today().isoformat()
-
-    safe_name = (
-        newspaper_name
-        .lower()
-        .replace(" ", "_")
-    )
-
-    filename = f"{safe_name}_{today}.pdf"
-    filepath = DOWNLOAD_DIR / filename
-
     with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
 
-        browser = p.chromium.launch(
-            headless=True
-        )
-
-        context = browser.new_context(
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/137.0.0.0 Safari/537.36"
+        try:
+            context = browser.new_context(
+                viewport={"width": 1366, "height": 768},
+                accept_downloads=True,
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/137.0.0.0 Safari/537.36"
+                ),
             )
-        )
 
-        #
-        # PAGE 1
-        #
+            # --- PAGE 1 ---
+            page1 = context.new_page()
+            print("Opening Indiags...")
 
-        page1 = context.new_page()
+            for attempt in range(3):
+                try:
+                    page1.goto(
+                        "https://www.indiags.com/epaper-pdf-download",
+                        wait_until="domcontentloaded",
+                        timeout=60000,
+                    )
+                    page1.locator("div.ep-card").first.wait_for(
+                        state="visible", timeout=30000
+                    )
+                    break
+                except Exception as e:
+                    print(f"Page load failed (attempt {attempt + 1}/3): {e}")
+                    if attempt == 2:
+                        raise
+                    page1.wait_for_timeout(5000)
 
-        print("Opening Indiags...")
+            # --- STEP 1: FIND NEWSPAPER CARD ---
+            print(f"Looking for {newspaper_name}...")
+            cards = page1.locator("div.ep-card")
+            card_count = cards.count()
+            print(f"Found {card_count} newspaper cards.")
 
-        for attempt in range(3):
-            try:
+            target_card = None
+            for i in range(card_count):
+                card = cards.nth(i)
+                title = (card.locator("p.ttl").text_content() or "").strip()
+                print(f"{i}: {title}")
 
-                page1.goto(
-                    "https://www.indiags.com/epaper-pdf-download",
-                    wait_until="domcontentloaded",
-                    timeout=60000
-                )
+                if title.casefold() == newspaper_name.casefold():
+                    target_card = card
+                    print(f"Found {newspaper_name} at index {i}")
+                    break
 
-                page1.locator(
-                    "div.ep-card"
-                ).first.wait_for(
-                    state="visible",
-                    timeout=30000
-                )
+            if target_card is None:
+                raise Exception(f"{newspaper_name} not found on the page.")
 
-                break
+            href = target_card.locator("a.ep-read").get_attribute("href")
+            print(f"Read href: {href}")
 
-            except Exception as e:
+            target_card.locator("a.ep-read").click()
+            page1.wait_for_load_state("domcontentloaded")
 
+            page2 = page1
+            print("Page2:", page2.url)
+
+            # --- STEP 2: READ NEWSPAPER ---
+            download_link = page2.locator(
+                "a.ep-cta-btn:has-text('Download Newspaper')"
+            )
+            download_link.wait_for(state="visible", timeout=30000)
+            download_link.click()
+
+            page2.wait_for_load_state("domcontentloaded")
+            page2.wait_for_timeout(1000)
+
+            page3 = page2
+            print("Page3:", page3.url)
+
+            # --- STEP 3: UNLOCK VIA QUIZ ---
+            unlock_link = page3.locator("a.pm-cta:has-text('Unlock via Quiz')")
+            unlock_link.wait_for(state="visible", timeout=30000)
+            unlock_link.click()
+
+            page3.wait_for_load_state("domcontentloaded")
+            page3.wait_for_timeout(1000)
+
+            page4 = page3
+            print("Page4:", page4.url)
+
+            # --- WAIT 15 SECONDS ---
+            print("Waiting 15 seconds...")
+            for i in range(15, 0, -1):
                 print(
-                    f"Page load failed (attempt {attempt + 1}/3): {e}"
+                    f"\r{i:2d} seconds remaining...",
+                    end="",
+                    flush=True,
                 )
+                page4.wait_for_timeout(1000)
 
-                if attempt == 2:
+            print("\rDone!                      \n")
 
-                    raise
+            # --- DOWNLOAD PDF ---
+            download_button = page4.locator("#manualDownloadBtn")
+            download_button.wait_for(state="visible", timeout=60000)
 
-                page1.wait_for_timeout(5000)
+            print("Downloading PDF...")
+            href = download_button.get_attribute("href")
+            print("Download URL:", href)
 
-        #
-        # STEP 1
-        # FIND THE HINDU CARD
-        #
+            temp_filepath = DOWNLOAD_DIR / "temp_download.pdf"
 
-        print(
-            f"Looking for {newspaper_name}..."
-        )
+            if temp_filepath.exists():
+                temp_filepath.unlink()
 
-        cards = page1.locator("div.ep-card")
+            print("Downloading PDF using requests...")
+            cookies = context.cookies()
 
-        card_count = cards.count()
-
-        print(f"Found {card_count} newspaper cards.")
-
-        target_card = None
-
-        for i in range(card_count):
-
-            card = cards.nth(i)
-
-            title = " ".join(
-                card.locator("p.ttl").inner_text().split()
-            )
-
-            print(f"{i}: {title}")
-
-            if title.casefold() == newspaper_name.casefold():
-
-                target_card = card
-
-                print(
-                    f"Found {newspaper_name} at index {i}"
-                )
-
-                break
-        if target_card is None:
-
-            raise Exception(
-                f"{newspaper_name} not found on the page."
-            )
-
-        with context.expect_page() as page2_info:
-
-            target_card.locator(
-                "a.ep-read"
-            ).click()
-            
-
-        page2 = page2_info.value
-
-        page2.wait_for_load_state()
-
-        print(
-            "Page2:",
-            page2.url
-        )
-
-        #
-        # STEP 2
-        # READ NEWSPAPER
-        #
-
-        with context.expect_page() as page3_info:
-
-            page2.locator(
-                "xpath=/html/body/div/div[28]/button"
-            ).click()
-
-        page3 = page3_info.value
-        page3.wait_for_load_state()
-
-        print("Page3:", page3.url)
-
-        #
-        # STEP 3
-        # UNLOCK QUIZ
-        #
-
-        with context.expect_page() as page4_info:
-
-            page3.locator(
-                "xpath=/html/body/div[2]/div/div[2]/a"
-            ).click()
-
-        page4 = page4_info.value
-        page4.wait_for_load_state()
-
-        print("Page4:", page4.url)
-
-        #
-        # WAIT 15 SEC
-        #
-
-        print("Waiting 15 seconds...")
-
-        page4.wait_for_timeout(15000)
-
-        #
-        # DOWNLOAD BUTTON
-        #
-
-        download_button = page4.locator(
-            "xpath=/html/body/div[6]/a"
-        )
-
-        download_button.wait_for(
-            state="visible",
-            timeout=60000
-        )
-
-        href = download_button.get_attribute(
-            "href"
-        )
-
-        if not href:
-
-            raise Exception(
-                "Download PDF href not found."
-            )
-
-        pdf_page_url = urljoin(
-            "https://www.indiags.com",
-            href
-        )
-
-        print("PDF Page URL:")
-        print(pdf_page_url)
-
-        #
-        # OPEN PDF PAGE
-        #
-
-        pdf_page = context.new_page()
-
-        pdf_page.goto(
-            pdf_page_url,
-            wait_until="load",
-            timeout=60000
-        )
-
-        #
-        # EXTRACT EMBED SRC
-        #
-
-        embed = pdf_page.locator(
-            "embed[type='application/pdf']"
-        )
-
-        embed.wait_for(
-            state="visible",
-            timeout=30000
-        )
-
-        pdf_src = embed.get_attribute(
-            "src"
-        )
-
-        if not pdf_src:
-
-            raise Exception(
-                "PDF embed src not found."
-            )
-
-        #
-        # BUILD ACTUAL PDF URL
-        #
-
-        pdf_url = urljoin(
-            pdf_page.url,
-            pdf_src
-        )
-
-        print("Actual PDF URL:")
-        print(pdf_url)
-
-        #
-        # VERIFY PAPER DATE
-        #
-
-        pdf_filename = unquote(
-            pdf_url.split("/")[-1]
-        )
-
-        print(
-            f"PDF filename: {pdf_filename}"
-        )
-
-        #
-        # Extract date from filename
-        #
-        # Supports:
-        # 18~06~2026
-        # 18_06_2026
-        # 18-06-2026
-        # 18.06.2026
-        # 2026_06_18
-        #
-
-        date_patterns = [
-
-            r"(\d{2})[~_.-](\d{2})[~_.-](\d{4})",
-
-            r"(\d{4})[~_.-](\d{2})[~_.-](\d{2})",
-
-        ]
-
-        match = None
-
-        for pattern in date_patterns:
-
-            match = re.search(
-                pattern,
-                pdf_filename
-            )
-
-            if match:
-
-                break
-
-        pdf_content = None
-
-        #
-        # DATE FOUND IN FILENAME
-        #
-
-        if match:
-
-            groups = match.groups()
-
-            if len(groups[0]) == 4:
-
-                year, month, day = groups
-            
-            else:
-
-                day, month, year = groups
-            
-            paper_date = datetime(
-                int(year),
-                int(month),
-                int(day)
-            ).date()
-        
-        #
-        # FALLBACK TO PDF TEXT
-        #
-
-        else:
-
-            print(
-                "No date found in filename."
-            )
-
-            print(
-                "Falling back to PDF text extraction..."
+            cookie_header = "; ".join(
+                f"{cookie['name']}={cookie['value']}" for cookie in cookies
             )
 
             response = requests.get(
-                pdf_url,
-                timeout=120
+                href,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/137.0.0.0 Safari/537.36"
+                    ),
+                    "Referer": page4.url,
+                    "Cookie": cookie_header,
+                },
+                timeout=120,
+                allow_redirects=True,
             )
 
             response.raise_for_status()
 
-            pdf_content = response.content
+            content_type = response.headers.get("Content-Type", "").lower()
 
-            paper_date = extract_date_from_pdf(
-                pdf_content
-            )
+            if "pdf" not in content_type:
+                raise Exception(
+                    f"Expected a PDF but got {content_type}."
+                )
+
+            if not response.content.startswith(b"%PDF"):
+                raise Exception(
+                    "Downloaded file does not appear to be a valid PDF."
+                )
+
+            with open(temp_filepath, "wb") as f:
+                f.write(response.content)
+
+            print(f"Saved PDF: {temp_filepath}")
+            print(f"Downloaded {len(response.content) / (1024 * 1024):.2f} MB")
+
+            # --- VERIFY & COMPRESS ---
+            pdf_content = temp_filepath.read_bytes()
+            paper_date = extract_date_from_pdf(pdf_content)
 
             if not paper_date:
-
                 raise Exception(
-                    f"Could not determine date from filename or PDF: {pdf_filename}"
+                    f"Could not determine date from PDF: {temp_filepath.name}"
                 )
 
-        today_ist = datetime.now(
-            ZoneInfo("Asia/Kolkata")
-        ).date()
+            today_ist = datetime.now(ZoneInfo("Asia/Kolkata")).date()
 
-        print(
-            f"Paper date: {paper_date}"
-        )
+            print(f"Paper date: {paper_date}")
+            print(f"Today's date: {today_ist}")
 
-        print(
-            f"Today's date: {today_ist}"
-        )
+            if paper_date != today_ist:
+                raise Exception(
+                    f"Paper date mismatch. Expected {today_ist}, got {paper_date}"
+                )
 
-        if paper_date != today_ist:
+            print("Paper date verified.")
 
-            raise Exception(
-                f"Paper date mismatch. "
-                f"Expected {today_ist}, "
-                f"got {paper_date}"
-            )
+            filename = response.headers.get(
+                "Content-Disposition",
+                f'attachment; filename="{newspaper_name}.pdf"',
+                )
 
-        print(
-            "Paper date verified."
-        )
+            match = re.search(r'filename="?([^"]+)"?', filename)
 
-        #
-        # DOWNLOAD PDF only if not already downloaded
-        #
+            if match:
+                final_filename = match.group(1)
+            else:
+                final_filename = f"{newspaper_name}.pdf"
 
-        if pdf_content is None:
+            final_filepath = DOWNLOAD_DIR / final_filename
 
-            response = requests.get(
-                pdf_url,
-                timeout=120
-            )
+            
+            if final_filepath.exists():
+                final_filepath.unlink()
+            
+            temp_filepath.rename(final_filepath)
+            filepath = final_filepath
 
-            response.raise_for_status()
+            print(f"Renamed PDF to: {filepath.name}")
 
-            pdf_content = response.content
-        
-        with open(filepath, "wb") as f:
+            size_mb = filepath.stat().st_size / (1024 * 1024)
+            print(f"PDF size: {size_mb:.2f} MB")
 
-            f.write(pdf_content)
+            if size_mb > 40:
+                print("PDF size exceeds 40 MB. Compressing...")
+                filepath = compress_pdf(filepath)
+            else:
+                print("PDF size is within limits. No compression needed.")
 
-        print(
-            f"Saved PDF: {filepath}"
-        )
+            return filepath
 
-        size_mb = filepath.stat().st_size / (1024 * 1024)
+        finally:
+            browser.close()
 
-        print(
-            f"PDF size: {size_mb:.2f} MB"
-        )
-
-        if size_mb > 40:
-
-            print("PDF size exceeds 40 MB. Compressing...")
-
-            filepath = compress_pdf(filepath)
-        
-        else:
-
-            print("PDF size is within limits. No compression needed.")
-
-        browser.close()
-
-        return filepath
 
 def compress_pdf(input_path: Path) -> Path:
-
-    output_path = input_path.with_name(
-        input_path.stem + "_compressed.pdf"
-    )
+    output_path = input_path.with_name(input_path.stem + "_compressed.pdf")
 
     doc = fitz.open(input_path)
-
-    doc.save(
-        output_path,
-        garbage=4,
-        deflate=True,
-        clean=True
-    )
-
+    doc.save(output_path, garbage=4, deflate=True, clean=True)
     doc.close()
 
     original = input_path.stat().st_size / (1024 * 1024)
